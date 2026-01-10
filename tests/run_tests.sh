@@ -57,7 +57,7 @@ TESTS=(
   "ContinuationExecuteSimple|{ 42 } &|[42]"
   "ContinuationExecuteMath|{ 5 3 + } &|[8]"
   "ContinuationExecuteString|{\"hello\"} &|[\"hello\"]"
-  "ContinuationSuspendResumeBasic|{ 1 { 2 } & ... }|[1, 2]"
+  "ContinuationSuspendResumeBasic|{ 1 { 2 } & ... } &|[1, 2]"
   "ContinuationNestedSuspend|{ 1 { 2 { 3 } & ... } & ... }|[1, 2, 3]"
   "ContinuationScopeIsolation|{ 5 'x # { x 1 + } & }|[5, 6]"
   "ContinuationReplaceSimple|{ 7 } !|7"

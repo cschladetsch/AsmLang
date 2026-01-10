@@ -10,7 +10,8 @@ extern pop
 extern pop_num
 extern variables
 extern var_types
-extern print_number
+extern stack_top
+extern in_continuation
 
 global push_num_handler
 push_num_handler:
@@ -376,16 +377,6 @@ extern execute_continuation_impl
 global suspend_handler
 suspend_handler:
     call pop
-    push rdx
-    mov rax, rdx
-    mov rdi, 1
-    call print_number
-    mov rax, 1
-    mov rdi, 1
-    lea rsi, [rel dbg_newline]
-    mov rdx, 1
-    syscall
-    pop rdx
     cmp rdx, TYPE_CONT
     je .run
     mov rax, 1
@@ -395,8 +386,11 @@ suspend_handler:
     syscall
     jmp execute_loop
 .run:
+    mov bl, [in_continuation]
     mov rdi, rax
     call execute_continuation_impl
+    cmp bl, 0
+    jne execute_loop
     jmp execute_loop
 .suspend_msg db "Suspend: expected continuation", 10
 .suspend_len equ $ - .suspend_msg
@@ -422,4 +416,3 @@ replace_handler:
     jmp execute_loop
 .replace_msg db "Replace: not implemented", 10
 .replace_len equ $ - .replace_msg
-dbg_newline db 10

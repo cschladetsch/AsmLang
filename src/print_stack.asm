@@ -125,9 +125,9 @@ print_stack:
     mov rdx, .close_cont_len
     syscall
     jmp .done
-.open_cont db '{',' '
+.open_cont db '{'
 .open_cont_len equ $ - .open_cont
-.close_cont db ' ','}'
+.close_cont db '}'
 .close_cont_len equ $ - .close_cont
 
 .done:
