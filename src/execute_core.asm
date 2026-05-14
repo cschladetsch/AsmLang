@@ -86,6 +86,11 @@ execute_done:
     jne .skip_print
     call print_stack
 .skip_print:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
     leave
     ret
 

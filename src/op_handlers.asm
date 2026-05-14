@@ -1,4 +1,4 @@
-    dq suspend_handler
+dq suspend_handler
 
 section .text
 section .text
@@ -372,8 +372,13 @@ push_false_handler:
     call push_type
     jmp execute_loop
 
-extern execute_continuation_impl
-
+; -----------------------------------------------------------------------
+; suspend_handler  (&)
+; Pops a TYPE_CONT from the data stack and executes it,
+; saving/restoring caller scope via push_context/pop_context.
+; A resumable context is only created when suspending from inside
+; another continuation.
+; -----------------------------------------------------------------------
 global suspend_handler
 suspend_handler:
     call pop
@@ -386,33 +391,84 @@ suspend_handler:
     syscall
     jmp execute_loop
 .run:
-    mov bl, [in_continuation]
-    mov rdi, rax
+    movzx ecx, byte [rel in_continuation]
+    push rcx
+    mov r9, [rel stack_top]
+    push rax
+    xor rdi, rdi
+    cmp byte [rel in_continuation], 0
+    je .push_ctx
+    mov rdi, 1
+.push_ctx:
+    call push_context
+    pop rdi
+    push r9
     call execute_continuation_impl
-    cmp bl, 0
-    jne execute_loop
+    pop r9
+    pop rcx
+    mov byte [rel in_continuation], cl
+    cmp byte [rel in_continuation], 0
+    jne .resume_exec
+    mov rax, [rel stack_top]
+    sub rax, r9
+    cmp rax, 1
+    jle .resume_exec
+    mov rdi, r9
+    call collapse_stack_slice_to_array
+.resume_exec:
     jmp execute_loop
 .suspend_msg db "Suspend: expected continuation", 10
 .suspend_len equ $ - .suspend_msg
 
+; -----------------------------------------------------------------------
+; resume_handler  (...)
+; Inside a continuation: sets CONT_SIGNAL_RESUME and jumps to
+; execute_done, which exits the current executor loop.
+; execute_continuation_impl clears the signal and restores caller scope.
+; Outside a continuation: prints an error.
+; -----------------------------------------------------------------------
 global resume_handler
 resume_handler:
+    cmp byte [rel in_continuation], 0
+    jne .in_cont
+    ; not inside a continuation -- error
     mov rax, 1
     mov rdi, 1
     lea rsi, [rel .resume_msg]
     mov rdx, .resume_len
     syscall
     jmp execute_loop
-.resume_msg db "Resume: not implemented", 10
+.in_cont:
+    ; signal resume and exit the current executor
+    mov qword [rel continuation_signal], CONT_SIGNAL_RESUME
+    jmp execute_done
+.resume_msg db "Resume: not in continuation", 10
 .resume_len equ $ - .resume_msg
 
+; -----------------------------------------------------------------------
+; replace_handler  (!)
+; Pops a TYPE_CONT from the data stack and executes it as a true
+; replacement. Control does not return to the current executor frame.
+; -----------------------------------------------------------------------
 global replace_handler
 replace_handler:
+    call pop
+    cmp rdx, TYPE_CONT
+    je .run
+    ; not a continuation -- error
     mov rax, 1
     mov rdi, 1
     lea rsi, [rel .replace_msg]
     mov rdx, .replace_len
     syscall
     jmp execute_loop
-.replace_msg db "Replace: not implemented", 10
+.run:
+    movzx ecx, byte [rel in_continuation]
+    push rcx
+    mov rdi, rax
+    call execute_continuation_tail
+    pop rcx
+    mov byte [rel in_continuation], cl
+    jmp execute_done
+.replace_msg db "Replace: expected continuation", 10
 .replace_len equ $ - .replace_msg
