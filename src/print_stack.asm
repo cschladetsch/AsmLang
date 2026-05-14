@@ -5,6 +5,9 @@ prompt_prefix db 0xCE, 0xBB, ' '
 prompt_prefix_len equ $ - prompt_prefix
 quote_char db '"'
 minus_char db '-'
+open_bracket db '['
+close_bracket_colon db ']: '
+close_bracket_colon_len equ $ - close_bracket_colon
 
 section .text
 extern stack
@@ -18,6 +21,9 @@ extern cont_storage
 global print_stack
 
 print_stack:
+    push rbx
+    push r12
+    
     cmp byte [stdin_is_tty], 0
     jne .no_batch_prompt
     mov rax, 1
@@ -26,12 +32,34 @@ print_stack:
     mov rdx, prompt_prefix_len
     syscall
 .no_batch_prompt:
-    mov rcx, [stack_top]
-    test rcx, rcx
-    jz .empty
-    dec rcx
-    mov rax, [stack + rcx*8]
-    movzx edx, byte [stack_types + rcx]
+    mov r12, [stack_top]
+    test r12, r12
+    jz .done
+    dec r12
+
+.loop:
+    ; Print [
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [open_bracket]
+    mov rdx, 1
+    syscall
+
+    ; Print index
+    mov rax, r12
+    call print_number
+
+    ; Print ]: 
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [close_bracket_colon]
+    mov rdx, close_bracket_colon_len
+    syscall
+
+    ; Get value and type
+    mov rax, [stack + r12*8]
+    movzx edx, byte [stack_types + r12]
+
     cmp edx, TYPE_NUM
     je .print_num
     cmp edx, TYPE_LABEL
@@ -44,11 +72,11 @@ print_stack:
     je .print_array
     cmp edx, TYPE_CONT
     je .print_cont
-    jmp .done
+    jmp .next_item
 
 .print_num:
     call print_number
-    jmp .done
+    jmp .next_item
 
 .print_str:
     mov r10, [rax]          ; length
@@ -68,7 +96,7 @@ print_stack:
     lea rsi, [quote_char]
     mov rdx, 1
     syscall
-    jmp .done
+    jmp .next_item
 
 .print_bool:
     cmp rax, 1
@@ -83,13 +111,11 @@ print_stack:
     mov rax, 1
     mov rdi, 1
     syscall
-    jmp .done
+    jmp .next_item
 .false db "false"
 .false_len equ $ - .false
 .true_str db "true"
 .true_len equ $ - .true_str
-.quote db '"'
-.quote_len equ $ - .quote
 
 .print_array:
     mov r10, [rax]
@@ -99,7 +125,7 @@ print_stack:
     mov rsi, r9
     mov rdx, r10
     syscall
-    jmp .done
+    jmp .next_item
 
 .print_cont:
     mov r11, rax          ; literal index
@@ -124,19 +150,25 @@ print_stack:
     lea rsi, [rel .close_cont]
     mov rdx, .close_cont_len
     syscall
-    jmp .done
+    jmp .next_item
 .open_cont db '{'
 .open_cont_len equ $ - .open_cont
 .close_cont db '}'
 .close_cont_len equ $ - .close_cont
 
-.done:
+.next_item:
     mov rax, 1
     mov rdi, 1
     lea rsi, [newline]
     mov rdx, 1
     syscall
-.empty:
+    
+    dec r12
+    jns .loop
+
+.done:
+    pop r12
+    pop rbx
     ret
 
 print_number:
@@ -154,7 +186,7 @@ print_number:
     mov rbx, 10
     lea rdi, [temp + 20]
     mov rcx, 0
-.loop:
+.loop_num:
     xor rdx, rdx
     div rbx
     add dl, '0'
@@ -162,7 +194,7 @@ print_number:
     mov [rdi], dl
     inc rcx
     test rax, rax
-    jnz .loop
+    jnz .loop_num
     mov rax, 1
     mov rsi, rdi
     mov rdx, rcx
