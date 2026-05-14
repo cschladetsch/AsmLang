@@ -1,3 +1,5 @@
+*.cmake
+.codex
 /.grok
 /rpn
 
