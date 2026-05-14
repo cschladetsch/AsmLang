@@ -1,6 +1,6 @@
 # AsmLang - Language in Assembly
 
-This is a modular Reverse Polish Notation (RPN) calculator implemented in x86-64 assembly language using NASM syntax. Supports continuations, iterations, looping and conditionals.
+This is a modular Reverse Polish Notation (RPN) calculator implemented in x86-64 assembly language using NASM syntax. It supports numbers, strings, arrays, variables, and continuation literals with `&`, `...`, and `!`.
 
 ## Demo
 
@@ -17,10 +17,11 @@ This is a modular Reverse Polish Notation (RPN) calculator implemented in x86-64
 - Boolean conveniences (`true`, `false`) and an `assert` word to guard invariants inline
 - String literal support with Pascal-style storage (quoted input, `+` concatenation)
 - Array literal support via `[ ... ]` tokens with arbitrary nested numbers, strings, or arrays (printed without quotes so you can eyeball the structure)
+- Continuation literals via `{ ... }`, executed with `&`, resumed with `...`, and tail-replaced with `!`
 - Modular architecture: tokenizer, parser, translator, executor
 - CMake-based build system
-- Automated tests
-- Prints the stack after each operation
+- Automated shell-based regression tests
+- Prints the top of stack after each evaluation cycle
 
 ## Build
 
@@ -41,32 +42,30 @@ This is a modular Reverse Polish Notation (RPN) calculator implemented in x86-64
 
 4. Run tests:
    ```
-   ctest
+   ./tests/run_tests.sh
    ```
-   Tests use input files in the `tests/` directory.
+   Or use the helper script:
+   ```
+   ./r
+   ```
+   `./r` rebuilds and runs the full regression suite.
 
 5. Enter RPN expressions, e.g.:
    ```
    λ 3 4 +
-   [0] 7
-   λ 5 2 -
-   [0] 3
-   λ 10 2 /
-   [0] 5
+   λ 7
    λ 42 'answer #
    λ answer
-   [0] 42
-   λ 1 2 swap -
-   [0] -1
-   λ 1 2 clear 5
-   [0] 5
-   λ "hello"
-   [0] "hello"
-   λ "hi there" 'greeting # greeting
-   [0] "hi there"
+   λ 42
+   λ [1 2 3]
+   λ [1 2 3]
+   λ { 5 3 + } &
+   λ 8
+   λ { 1 { 2 } & ... } &
+   λ [1, 2]
    λ 1 +
    Stack underflow
-   [0] 1
+   λ 1
    ```
 
 6. Press Ctrl+D to exit.
@@ -106,7 +105,6 @@ The diagram mirrors the implementation: each block is an assembly module and eve
 
 ## Stack display, words & error handling
 
-- Stack indices now reflect the top of stack accurately (`[0]` is the topmost value, `[1]` is the next entry).
 - Underflow is detected before arithmetic executes. When it happens the REPL prints a red `Stack underflow` message if color is enabled, then immediately re-prompts without crashing.
 - Syntax errors abort a line before translation/execution. Examples: `4+` or `4++` now print `Syntax error: 4` and leave the previous stack untouched.
 - Colors default to "auto" (TTY detection). Override with `--color` or `--no-color` on the CLI.
@@ -116,6 +114,7 @@ The diagram mirrors the implementation: each block is an assembly module and eve
 - **Integers:** bare decimal tokens (`-13`, `42`).
 - **Strings:** wrapped in double quotes with `"` escapes. They are stored once in a Pascal-style pool and concatenated with `+`.
 - **Arrays:** one token surrounded by brackets (`[1 2 3]`, `[[1 2] [3 4]]`, `["hello" "world"]`). Arrays are kept verbatim (including whitespace) and rendered without additional quoting so you can inspect the literal text directly.
+- **Continuations:** one token surrounded by braces (`{ 1 2 + }`). A bare continuation literal is data; use `&` to execute it.
 - **Labels:** use `'name` to push a hashable handle onto the stack before calling `#` to store a value.
 - **Booleans:** `true` pushes `1`, `false` pushes `0`. Pair them with `assert` to terminate early when invariants fail.
 
@@ -123,10 +122,31 @@ The diagram mirrors the implementation: each block is an assembly module and eve
 λ [1 2 3]
 [0] [1 2 3]
 λ ["hello" "world"] 'arr # arr
-[0] ["hello" "world"]
+λ ["hello" "world"]
 λ true false swap
-[0] 1
-[1] 0
+λ 1
+λ { 10 20 + } &
+λ 30
+```
+
+### Continuation words
+
+| Word | Stack effect | Notes |
+| --- | --- | --- |
+| `{ ... }` | `-- cont` | Pushes a continuation literal without executing it. |
+| `&` | `cont -- result...` | Executes a continuation in its captured scope. At top level, multiple results print as a stack snapshot like `[1, 2]`. |
+| `...` | `--` | Returns from the current continuation immediately. Using it at top level is an error. |
+| `!` | `cont -- result...` | Replaces the current continuation with another one (tail-style continuation transfer). |
+
+Example:
+
+```text
+λ { 42 } &
+λ 42
+λ { 1 { 2 } & ... } &
+λ [1, 2]
+λ { 7 } !
+λ 7
 ```
 
 ### Word reference
@@ -149,25 +169,18 @@ Combine `'label` and `#` to persist values: `42 'answer # answer` stores the int
 
 Example session:
 
-```
+```text
 λ 1 2 dup over rot depth
-[4] 4
-[3] 2
-[2] 2
-[1] 2
-[0] 1
+λ 4
 λ 5 5 eq
-[0] 1
+λ 1
 λ 2 1 gt
-[0] 1
+λ 1
 λ 1 2 lt
-[0] 1
+λ 1
 λ 2 'a # a a + 4 eq assert
-λ 'a 'b # b
-[0] label@97
 λ [1 2] [3 4] swap
-[0] [3 4]
-[1] [1 2]
+λ [1 2]
 ```
 
 ## Testing & reproducibility
@@ -175,20 +188,23 @@ Example session:
 Use the helper script plus piped sessions to exercise typical flows:
 
 ```bash
-./r                    # rebuild + run banner smoke test
+./r                    # rebuild + run the full regression suite
 printf '3\n\n' | ./bin/rpn
 printf -- '-3\n\n' | ./bin/rpn
 printf '1 2\n\n+\n\n+\n' | ./bin/rpn
 printf '+\n' | ./bin/rpn --color
 printf '1 2 dup over rot depth\n\n' | ./bin/rpn
+printf '{ 42 } &\n' | ./bin/rpn --no-color
+printf '{ 1 { 2 } & ... } &\n' | ./bin/rpn --no-color
 tests/stack_words_test.sh  # automated coverage for dup/over/rot/depth/eq/gt/lt/true/false/assert
+tests/run_tests.sh         # full regression suite, including continuations
 ```
 
-These cover positive/negative literals, chained operations, syntax errors, and colored underflow handling.
+These cover positive/negative literals, chained operations, continuations, syntax errors, and colored underflow handling.
 
 ## Limitations
 
 - Only integer arithmetic
 - No floating point support
-- Stack size limited to 100 elements
+- Stack size limited to 10000 elements
 - Simple parsing, no advanced error recovery
