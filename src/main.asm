@@ -7,7 +7,7 @@ section .data
     no_color_arg db "--no-color", 0
     color_arg db "--color", 0
 %define BUILD_DATE "2026-15-05T13:32:48Z"
-    version db "1.0.0", 0
+    version db "1.1.0", 0
     version_len equ $ - version
     prelude db "Built: "
     prelude_len equ $ - prelude
