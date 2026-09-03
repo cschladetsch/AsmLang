@@ -1,6 +1,6 @@
 # AsmLang - Language in Assembly
 
-This is a modular Reverse Polish Notation (RPN) calculator implemented in x86-64 assembly language using NASM syntax. It supports numbers, strings, arrays, variables, and continuation literals with `&`, `...`, and `!`.
+A modular Reverse Polish Notation (RPN) calculator implemented in x86-64 assembly language using NASM syntax. Supports numbers, strings, arrays, variables, and continuation literals with `&`, `...`, and `!`.
 
 ## Demo
 
@@ -9,82 +9,108 @@ This is a modular Reverse Polish Notation (RPN) calculator implemented in x86-64
 ## Features
 
 - REPL (Read-Eval-Print Loop) for interactive calculations
-- Supports basic arithmetic operations: +, -, *, /
-- Variable support with C-style naming (start with letter or _, contain letters, digits, _)
-- Label quoting with `'name` (pushes the variable label) and an explicit `#` store word to write the top value into that label
+- Basic arithmetic: `+`, `-`, `*`, `/`
+- Variable support with C-style naming (start with letter or `_`, contain letters, digits, `_`)
+- Label quoting with `'name` (pushes the variable label) and `#` to store a value into that label
 - Forth-style stack words: `clear`, `drop`, `swap`, `dup`, `over`, `rot`, `depth`
-- Comparison helpers: `eq`, `gt`, `lt` push 1 (true) or 0 (false)
-- Boolean conveniences (`true`, `false`) and an `assert` word to guard invariants inline
+- Comparison helpers: `eq`, `gt`, `lt` push `1` (true) or `0` (false)
+- Boolean conveniences (`true`, `false`) and `assert` to guard invariants inline
 - String literal support with Pascal-style storage (quoted input, `+` concatenation)
-- Array literal support via `[ ... ]` tokens with arbitrary nested numbers, strings, or arrays (printed without quotes so you can eyeball the structure)
-- Continuation literals via `{ ... }`, executed with `&`, resumed with `...`, and tail-replaced with `!`
-- Modular architecture: tokenizer, parser, translator, executor
-- CMake-based build system
+- Array literal support via `[ ... ]` tokens — arbitrary nesting of numbers, strings, or arrays
+- Continuation literals via `{ ... }`, executed with `&`, resumed with `...`, tail-replaced with `!`
+- Array collapse: when a continuation produces multiple stack values, they are automatically collapsed into a single array value
+- Modular architecture: tokenizer, parser, translator, executor, stack ops
+- CMake build system
 - Automated shell-based regression tests
 - Prints the top of stack after each evaluation cycle
 
 ## Build
 
-1. Ensure you have CMake and NASM installed.
+### Linux / WSL2
 
-2. Build the project:
-   ```
-   mkdir build
-   cd build
-   cmake ..
-   make
-   ```
+```bash
+mkdir build && cd build
+cmake ..
+make
+```
 
-3. Run the calculator:
-   ```
-   ../bin/rpn
-   ```
+### Windows (native PowerShell)
 
-4. Run tests:
-   ```
-   ./tests/run_tests.sh
-   ```
-   Or use the helper script:
-   ```
-   ./r
-   ```
-   `./r` rebuilds and runs the full regression suite.
+The binary targets Linux ELF64 and uses Linux syscalls throughout, so it must be assembled and run under WSL2. Native Windows linking is not supported without a full syscall port.
 
-5. Enter RPN expressions, e.g.:
-   ```
-   λ 3 4 +
-   λ 7
-   λ 42 'answer #
-   λ answer
-   λ 42
-   λ [1 2 3]
-   λ [1 2 3]
-   λ { 5 3 + } &
-   λ 8
-   λ { 1 { 2 } & ... } &
-   λ [1, 2]
-   λ 1 +
-   Stack underflow
-   λ 1
-   ```
+Prerequisites in WSL2:
 
-6. Press Ctrl+D to exit.
+```bash
+sudo apt install nasm cmake make
+```
 
-7. Colors are enabled automatically when stdout is a TTY and disabled when piping/redirecting. Use `--color` to force color or `--no-color` to force plain text.
+Build from PowerShell:
 
-## How it works
+```powershell
+wsl -- bash -c "cd /mnt/c/Users/chris/local/repos/AsmLang && mkdir -p build bin && cd build && cmake .. && make"
+```
 
-The calculator is structured in modules:
+Run from PowerShell:
 
-- **Tokenizer** (`tokenizer.asm`): Splits input into tokens
-- **Parser** (`parser.asm`): Parses tokens into operations, enforcing syntax (operators such as `+` must be isolated tokens, so `4 +` is valid while `4+` becomes a syntax error)
-- **Translator** (`translator.asm`): Translates operations to bytecode
-- **Executor** (`executor.asm`): Executes bytecode on the stack and prints the stack after every execution cycle
+```powershell
+wsl -- /mnt/c/Users/chris/local/repos/AsmLang/bin/rpn
+```
 
-- Numbers and variables are pushed onto the stack
-- Operators pop operands, perform operations, and push results
-- Variables use C-style names and are stored in a hash table
-- The REPL reads input, tokenizes, parses, translates, executes, and prints the stack while reporting syntax/stack errors inline
+Add a permanent alias to `$PROFILE`:
+
+```powershell
+function rpn   { wsl -- /mnt/c/Users/chris/local/repos/AsmLang/bin/rpn $args }
+function Build-AsmLang { wsl -- bash -c "cd /mnt/c/Users/chris/local/repos/AsmLang/build && make 2>&1" }
+```
+
+## Run
+
+```bash
+../bin/rpn
+```
+
+## Tests
+
+```bash
+./tests/run_tests.sh   # full regression suite
+./r                    # rebuild + full suite
+```
+
+## Usage
+
+```
+λ 3 4 +
+λ 7
+λ 42 'answer #
+λ answer
+λ 42
+λ [1 2 3]
+λ [1 2 3]
+λ { 5 3 + } &
+λ 8
+λ { 1 { 2 } & ... } &
+λ [1 2]
+λ 1 +
+Stack underflow
+λ 1
+```
+
+Press `Ctrl+D` to exit.
+
+Colors are enabled automatically when stdout is a TTY. Override with `--color` or `--no-color`.
+
+## Architecture
+
+Each module is a separate `.asm` file assembled as its own translation unit and linked together:
+
+| Module | File | Role |
+| --- | --- | --- |
+| Tokenizer | `tokenizer.asm` | Splits input into tokens |
+| Parser | `parser.asm` | Parses tokens into operations; enforces syntax (`4+` is a syntax error, `4 +` is valid) |
+| Translator | `translator.asm` | Translates operations to bytecode |
+| Executor | `executor.asm` | Executes bytecode; includes `stack_ops.asm`, `op_handlers.asm`, `execute_core.asm`, `execute_continuation.asm`, `print_stack.asm`, `strings.asm` via `%include` |
+| Stack ops | `stack_ops.asm` | `push_num`, `push_str`, `push_type`, `pop`, `pop_num`, `pop_bool`, `collapse_stack_slice_to_array` |
+| Entry point | `main.asm` | REPL loop, BSS declarations, global symbol exports |
 
 ### REPL pipeline
 
@@ -101,110 +127,120 @@ flowchart LR
     Display --> Prompt[Prompt]
 ```
 
-The diagram mirrors the implementation: each block is an assembly module and every arrow is an explicit call in `src/main.asm`.
+### Value representation
 
-## Stack display, words & error handling
+The stack is a parallel pair of arrays declared in `main.asm`:
 
-- Underflow is detected before arithmetic executes. When it happens the REPL prints a red `Stack underflow` message if color is enabled, then immediately re-prompts without crashing.
-- Syntax errors abort a line before translation/execution. Examples: `4+` or `4++` now print `Syntax error: 4` and leave the previous stack untouched.
-- Colors default to "auto" (TTY detection). Override with `--color` or `--no-color` on the CLI.
-
-### Literal syntax & examples
-
-- **Integers:** bare decimal tokens (`-13`, `42`).
-- **Strings:** wrapped in double quotes with `"` escapes. They are stored once in a Pascal-style pool and concatenated with `+`.
-- **Arrays:** one token surrounded by brackets (`[1 2 3]`, `[[1 2] [3 4]]`, `["hello" "world"]`). Arrays are kept verbatim (including whitespace) and rendered without additional quoting so you can inspect the literal text directly.
-- **Continuations:** one token surrounded by braces (`{ 1 2 + }`). A bare continuation literal is data; use `&` to execute it.
-- **Labels:** use `'name` to push a hashable handle onto the stack before calling `#` to store a value.
-- **Booleans:** `true` pushes `1`, `false` pushes `0`. Pair them with `assert` to terminate early when invariants fail.
-
-```
-λ [1 2 3]
-[0] [1 2 3]
-λ ["hello" "world"] 'arr # arr
-λ ["hello" "world"]
-λ true false swap
-λ 1
-λ { 10 20 + } &
-λ 30
+```nasm
+stack       resq 10000   ; 8-byte values
+stack_types resb 10000   ; type tag per entry
+stack_top   resq 1       ; count (not pointer)
 ```
 
-### Continuation words
+| Type tag | Constant | Value in `stack[i]` |
+| --- | --- | --- |
+| Number | `TYPE_NUM  equ 0` | 64-bit signed integer |
+| String | `TYPE_STR  equ 1` | Pointer to `{qword len, bytes...}` |
+| Array  | `TYPE_ARRAY equ 2` | Pointer to `{qword len, bytes...}` (rendered text) |
+| Bool   | `TYPE_BOOL equ 3` | `1` (true) or `0` (false) |
+| Continuation | `TYPE_CONT equ 4` | Index into `cont_literal_offsets` |
+| Label  | `TYPE_LABEL equ 5` | Hash of the variable name |
+
+Strings and arrays share the same `{length, data}` layout. Arrays store their rendered text (e.g. `[ 1 2 3 ]`) so printing is a single `write` syscall.
+
+### Array collapse
+
+When a continuation executes and leaves more than one new value on the stack, `collapse_stack_slice_to_array` (in `stack_ops.asm`) is called. It:
+
+1. Iterates the slice `[base .. stack_top)`, formatting each value into a `[ v0 v1 ... ]` text buffer allocated in `cont_storage` (a 64 KB bump-allocated region)
+2. Writes the text length as a qword prefix
+3. Rewinds `stack_top` to the slice base
+4. Pushes a single `TYPE_ARRAY` value pointing at the new buffer
+
+## Literal syntax
+
+| Literal | Example | Notes |
+| --- | --- | --- |
+| Integer | `42`, `-13` | Bare decimal token |
+| String | `"hello"` | Pascal-style pool storage; `+` concatenates |
+| Array | `[1 2 3]`, `[[1 2] "x"]` | Stored as rendered text; nested arrays supported |
+| Continuation | `{ 1 2 + }` | Data until executed with `&` |
+| Label | `'answer` | Pushes variable handle for use with `#` |
+| Bool | `true`, `false` | Push `1` or `0` |
+
+## Word reference
+
+### Stack words
 
 | Word | Stack effect | Notes |
 | --- | --- | --- |
-| `{ ... }` | `-- cont` | Pushes a continuation literal without executing it. |
-| `&` | `cont -- result...` | Executes a continuation in its captured scope. At top level, multiple results print as a stack snapshot like `[1, 2]`. |
-| `...` | `--` | Returns from the current continuation immediately. Using it at top level is an error. |
-| `!` | `cont -- result...` | Replaces the current continuation with another one (tail-style continuation transfer). |
+| `dup` | `x -- x x` | Duplicates top (any type) |
+| `over` | `x1 x2 -- x1 x2 x1` | Copies second to top |
+| `rot` | `x1 x2 x3 -- x2 x3 x1` | Rotates top three (Forth semantics) |
+| `depth` | `-- n` | Pushes current stack depth |
+| `clear` | `... --` | Empties the stack |
+| `drop` | `x --` | Discards top |
+| `swap` | `x1 x2 -- x2 x1` | Swaps top two |
 
-Example:
+### Arithmetic
 
-```text
-λ { 42 } &
-λ 42
-λ { 1 { 2 } & ... } &
-λ [1, 2]
-λ { 7 } !
-λ 7
-```
+| Word | Stack effect |
+| --- | --- |
+| `+` | `a b -- a+b` |
+| `-` | `a b -- a-b` |
+| `*` | `a b -- a*b` |
+| `/` | `a b -- a/b` |
 
-### Word reference
+### Comparison & logic
 
 | Word | Stack effect | Notes |
 | --- | --- | --- |
-| `dup` | `x -- x x` | Duplicates the top element (any type). |
-| `over` | `x1 x2 -- x1 x2 x1` | Copies the second element to the top. |
-| `rot` | `x1 x2 x3 -- x2 x3 x1` | Rotates the top three entries (Forth semantics). |
-| `depth` | `-- n` | Pushes current stack depth as an integer. |
-| `'name` | `-- label` | Pushes a variable label (hash) for later use. |
-| `#` | `value label --` | Stores `value` into the quoted label (`label` must be the top item). |
-| `true` / `false` | `-- n` | Push integer booleans (`1` or `0`). |
-| `eq` | `a b -- flag` | Integer equality, pushes 1 if `a == b` else 0. |
-| `gt` | `a b -- flag` | Integer compare (`a > b`). |
-| `lt` | `a b -- flag` | Integer compare (`a < b`). |
-| `assert` | `flag --` | Pops a boolean/integer; exits with an error if it is zero. |
+| `eq` | `a b -- flag` | `1` if `a == b` |
+| `gt` | `a b -- flag` | `1` if `a > b` |
+| `lt` | `a b -- flag` | `1` if `a < b` |
+| `true` | `-- 1` | |
+| `false` | `-- 0` | |
+| `assert` | `flag --` | Exits with error if flag is zero |
 
-Combine `'label` and `#` to persist values: `42 'answer # answer` stores the integer 42 into `answer`, while `'answer 'backup #` copies the label itself into another variable slot.
+### Variables
 
-Example session:
+| Word | Stack effect | Notes |
+| --- | --- | --- |
+| `'name` | `-- label` | Pushes variable label (hash) |
+| `#` | `value label --` | Stores value into label |
 
-```text
-λ 1 2 dup over rot depth
-λ 4
-λ 5 5 eq
-λ 1
-λ 2 1 gt
-λ 1
-λ 1 2 lt
-λ 1
-λ 2 'a # a a + 4 eq assert
-λ [1 2] [3 4] swap
-λ [1 2]
-```
+### Continuations
 
-## Testing & reproducibility
+| Word | Stack effect | Notes |
+| --- | --- | --- |
+| `{ ... }` | `-- cont` | Pushes continuation literal without executing |
+| `&` | `cont -- result...` | Executes continuation in captured scope |
+| `...` | `--` | Returns from current continuation; error at top level |
+| `!` | `cont --` | Tail-replaces current continuation |
 
-Use the helper script plus piped sessions to exercise typical flows:
+## Error handling
+
+- **Stack underflow**: detected before arithmetic executes; prints red `Stack underflow` (if color enabled) and re-prompts without crashing
+- **Syntax errors**: abort the line before translation; e.g. `4+` prints `Syntax error: 4` and leaves the previous stack untouched
+- **Colors**: auto-detected via TTY; override with `--color` / `--no-color`
+
+## Testing
 
 ```bash
-./r                    # rebuild + run the full regression suite
+./r                                   # rebuild + full regression suite
 printf '3\n\n' | ./bin/rpn
 printf -- '-3\n\n' | ./bin/rpn
 printf '1 2\n\n+\n\n+\n' | ./bin/rpn
 printf '+\n' | ./bin/rpn --color
-printf '1 2 dup over rot depth\n\n' | ./bin/rpn
 printf '{ 42 } &\n' | ./bin/rpn --no-color
 printf '{ 1 { 2 } & ... } &\n' | ./bin/rpn --no-color
-tests/stack_words_test.sh  # automated coverage for dup/over/rot/depth/eq/gt/lt/true/false/assert
-tests/run_tests.sh         # full regression suite, including continuations
+tests/stack_words_test.sh
+tests/run_tests.sh
 ```
-
-These cover positive/negative literals, chained operations, continuations, syntax errors, and colored underflow handling.
 
 ## Limitations
 
-- Only integer arithmetic
-- No floating point support
-- Stack size limited to 10000 elements
-- Simple parsing, no advanced error recovery
+- Integer arithmetic only; no floating point
+- Stack depth capped at 10,000 elements
+- `cont_storage` (array/string bump allocator) is 64 KB; deep continuation nesting or large array collapses will exhaust it
+- ELF64 binary; requires Linux or WSL2 to run — no native Windows PE support without porting syscalls to Win32

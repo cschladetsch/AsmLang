@@ -8,7 +8,7 @@ set(CMAKE_EXE_LINKER_FLAGS "-nostdlib -no-pie")
 set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 set(CMAKE_ASM_NASM_FLAGS "-g -D BUILD_DATE='${BUILD_DATE}' -D LOG_ENABLED=0 -I${CMAKE_SOURCE_DIR}/include -I${CMAKE_SOURCE_DIR}/src")
 
-set(CMAKE_ASM_NASM_COMPILER /usr/bin/nasm)
+set(CMAKE_ASM_NASM_COMPILER nasm)
 execute_process(COMMAND date -u +%Y-%m-%dT%H:%M:%SZ OUTPUT_VARIABLE BUILD_DATE OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 set(CMAKE_ASM_NASM_COMPILE_OBJECT "<CMAKE_ASM_NASM_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -f elf64 -g -o <OBJECT> <SOURCE>")
@@ -18,7 +18,7 @@ add_executable(rpn
     src/tokenizer.asm
     src/parser.asm
     src/translator.asm
-    src/executor.asm
+    src/executor.asm 
     src/main.asm
 )
 
